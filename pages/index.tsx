@@ -20,7 +20,10 @@ const Home: NextPage<HomePageProps> = ({ name }) => {
         <h1 className={styles.title}>
           Welcome to Azure AD Exploration!
         </h1>
-        <p>{name}</p>
+        <p>Welcome, {name}</p>
+        <p>
+          <a href="/auth/ropc">Resource Owner Password Credentials (ROPC) flow</a>
+        </p>
       </main>
     </div>
   )

@@ -4,6 +4,7 @@ body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
     Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+  font-size: 14px;
 }
 
 a {
@@ -13,4 +14,26 @@ a {
 
 * {
   box-sizing: border-box;
+}
+
+form {
+  margin: 2rem 0;
+}
+
+input[type="text"],
+input[type="password"] {
+  min-width: 400px;
+  font-size: 14px;
+  border-radius: 3px;
+  border: 1px solid #ddd;
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+}
+
+button {
+  font-size: 14px;
+  border-radius: 3px;
+  border: 1px solid #ddd;
+  padding: 0.5rem 1rem;
+  min-width: 100px;
 }
