@@ -1,0 +1,12 @@
+{
+  "AzureAdTenantId": "c03a8ef7-36ea-4e72-af33-7d47416ffe18",
+  "AzureAdTenantName": "alcumusServicesDev",
+  "AppRegistrationClientId": "16b38fd1-aa1c-4f50-a59d-41450565dc65",
+  "IdentityExperienceAppId": "2a68b030-2ebe-43cf-b9f7-b749cf126b9b",
+  "ProxyIdentityExperienceAppId": "f11a47a8-e618-4fb5-9efc-419cd7e5aae7",
+  "ServicesBaseUrl": "https://services.dev.ecompliance.dev",
+  "PolicyPrefix": "DEV",
+  "B2CExtensionsObjectId": "b3a0bbfa-543f-4966-b576-9255bd2d2609",
+  "B2CExtensionsClientId": "658f2b4e-d2f9-4520-bdd9-9c7f2b46d58b",
+  "RequireEmailVerification": false
+}

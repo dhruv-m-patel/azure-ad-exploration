@@ -1,0 +1,870 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<TrustFrameworkPolicy
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://schemas.microsoft.com/online/cpim/schemas/2013/06"
+  PolicySchemaVersion="0.3.0.0"
+  TenantId="yourtenant.onmicrosoft.com"
+  PolicyId="B2C_1A_ENV_TrustFrameworkExtensions"
+  PublicPolicyUri="http://yourtenant.onmicrosoft.com/B2C_1A_ENV_TrustFrameworkExtensions"
+>
+  <BasePolicy>
+    <TenantId>yourtenant.onmicrosoft.com</TenantId>
+    <PolicyId>B2C_1A_ENV_TrustFrameworkLocalization</PolicyId>
+  </BasePolicy>
+
+  <BuildingBlocks>
+    <ClaimsSchema>
+      <!-- BI-312 Flag to Force Password Reset on First Login -->
+      <ClaimType Id="requiresPasswordReset">
+        <DisplayName>Must reset password</DisplayName>
+        <DataType>boolean</DataType>
+        <UserHelpText
+          >Specifies whether user must reset the password</UserHelpText
+        >
+      </ClaimType>
+
+      <ClaimType Id="requiresMFA">
+        <DisplayName>Must use MFA</DisplayName>
+        <DataType>boolean</DataType>
+        <UserHelpText
+          >Specifies whether user must use MFA on signin/signup</UserHelpText
+        >
+      </ClaimType>
+
+      <ClaimType Id="isForgotPassword">
+        <DisplayName>isForgotPassword</DisplayName>
+        <DataType>boolean</DataType>
+        <AdminHelpText
+          >Whether the user has selected Forgot your Password</AdminHelpText
+        >
+      </ClaimType>
+
+      <!-- ### BI-233 Flag to Control Migrations ### -->
+      <ClaimType Id="needsMigration">
+        <DisplayName>needsMigration</DisplayName>
+        <DataType>boolean</DataType>
+        <AdminHelpText
+          >Indicates whether the user need to migrate</AdminHelpText
+        >
+        <UserHelpText>Indicates whether the user need to migrate</UserHelpText>
+      </ClaimType>
+      <ClaimType Id="useInputPassword">
+        <DisplayName>useInputPassword</DisplayName>
+        <DataType>boolean</DataType>
+      </ClaimType>
+      <ClaimType Id="oldPassword">
+        <DisplayName>Old Password</DisplayName>
+        <DataType>string</DataType>
+        <UserHelpText>Enter your old password</UserHelpText>
+        <UserInputType>Password</UserInputType>
+      </ClaimType>
+      <!-- ### Changes end: BI-233 Flag to Control Migrations ### -->
+
+      <!-- ### BI-341 Expire user password after X days ###-->
+      <!-- The system current date and time-->
+      <ClaimType Id="currentDateTime">
+        <DisplayName>Current date and time</DisplayName>
+        <DataType>dateTime</DataType>
+        <UserHelpText>Current date and time</UserHelpText>
+      </ClaimType>
+      <!-- The last time user reset the password-->
+      <ClaimType Id="extension_passwordResetOn">
+        <DisplayName>Password reset on</DisplayName>
+        <DataType>dateTime</DataType>
+        <UserHelpText>The last time user reset the password</UserHelpText>
+      </ClaimType>
+      <!-- Indicates whether password reset is required, based on date comparison -->
+      <ClaimType Id="isPasswordResetOnGreaterThanNow">
+        <DisplayName>Indicates whether password reset is required</DisplayName>
+        <DataType>boolean</DataType>
+      </ClaimType>
+      <!-- Indicates whether password reset exists -->
+      <ClaimType Id="isPasswordResetOnPresent">
+        <DisplayName>Is password reset on presented</DisplayName>
+        <DataType>boolean</DataType>
+      </ClaimType>
+      <!-- Indicates whether password reset is required or not, based on date comparison and if extension_passwordResetOn is null -->
+      <ClaimType Id="skipPasswordReset">
+        <DisplayName>Skip password reset</DisplayName>
+        <DataType>boolean</DataType>
+      </ClaimType>
+      <!-- ### Changes end: BI-341 Expire user password after X days ###-->
+
+      <!-- ### ARC-247 check if refresh token is valid ###-->
+      <ClaimType Id="refreshTokenIssuedOnDateTime">
+        <DisplayName>Refresh token issued date time</DisplayName>
+        <DataType>string</DataType>
+        <UserHelpText
+          >Parameter for date time a refresh token was issued</UserHelpText
+        >
+      </ClaimType>
+      <ClaimType Id="refreshTokensValidFromDateTime">
+        <DisplayName>Refresh token valid from date time</DisplayName>
+        <DataType>string</DataType>
+        <UserHelpText
+          >Any token issued before this date time is considered
+          invalid</UserHelpText
+        >
+      </ClaimType>
+      <!-- ### Changes end: ARC-247 check if refresh token is valid ###-->
+    </ClaimsSchema>
+
+    <ClaimsTransformations>
+      <!-- ### BI-341 Expire user password after X days ###-->
+      <!-- Set the current UTC date and time to extension_passwordResetOn claim type-->
+      <ClaimsTransformation
+        Id="SetPasswordResetOn"
+        TransformationMethod="GetCurrentDateTime"
+      >
+        <OutputClaims>
+          <OutputClaim
+            ClaimTypeReferenceId="extension_passwordResetOn"
+            TransformationClaimType="currentDateTime"
+          />
+        </OutputClaims>
+      </ClaimsTransformation>
+
+      <!-- Set the current UTC date and time to currentDateTime claim type-->
+      <ClaimsTransformation
+        Id="SetCurrentDateTime"
+        TransformationMethod="GetCurrentDateTime"
+      >
+        <OutputClaims>
+          <OutputClaim
+            ClaimTypeReferenceId="currentDateTime"
+            TransformationClaimType="currentDateTime"
+          />
+        </OutputClaims>
+      </ClaimsTransformation>
+
+      <!-- Compare the dates and check if password reset is required -->
+      <ClaimsTransformation
+        Id="ComparePasswordResetOnWithCurrentDateTime"
+        TransformationMethod="DateTimeComparison"
+      >
+        <InputClaims>
+          <InputClaim
+            ClaimTypeReferenceId="currentDateTime"
+            TransformationClaimType="firstDateTime"
+          />
+          <InputClaim
+            ClaimTypeReferenceId="extension_passwordResetOn"
+            TransformationClaimType="secondDateTime"
+          />
+        </InputClaims>
+        <InputParameters>
+          <!-- We check if the first date (current) minus 90 day is later than second date (password reset on).
+          If yes, it means that at least 90 days passed from the time user reset the password.
+          Note: the first date must contain a value. So, we use the current datetime. Don't change the order -->
+          <InputParameter
+            Id="operator"
+            DataType="string"
+            Value="earlier than"
+          />
+
+          <!-- Set the time span for password expiration (in seconds)-->
+          <!-- Debug: Set passwords to expire in 5 seconds to allow for easy testing -->
+          <!-- <InputParameter Id="timeSpanInSeconds" DataType="int" Value="-5" /> -->
+
+          <!-- Production Policy: Set passwords to expire in 90 days (90 days * 24 hours * 60 minutes * 60 seconds) -->
+          <InputParameter
+            Id="timeSpanInSeconds"
+            DataType="int"
+            Value="-7776000"
+          />
+        </InputParameters>
+        <OutputClaims>
+          <OutputClaim
+            ClaimTypeReferenceId="isPasswordResetOnGreaterThanNow"
+            TransformationClaimType="result"
+          />
+        </OutputClaims>
+      </ClaimsTransformation>
+
+      <!-- Check if extension_passwordResetOn is existed in user account. -->
+      <ClaimsTransformation
+        Id="CheckIfPasswordResetOnPresent"
+        TransformationMethod="DoesClaimExist"
+      >
+        <InputClaims>
+          <InputClaim
+            ClaimTypeReferenceId="extension_passwordResetOn"
+            TransformationClaimType="inputClaim"
+          />
+        </InputClaims>
+        <OutputClaims>
+          <OutputClaim
+            ClaimTypeReferenceId="isPasswordResetOnPresent"
+            TransformationClaimType="outputClaim"
+          />
+        </OutputClaims>
+      </ClaimsTransformation>
+
+      <!-- Check if datetime comparison is true and also the PasswordResetOn is presented in the user account.
+      If both of them are true, user doesn't need to reset the password-->
+      <ClaimsTransformation
+        Id="CheckWhetherPasswordResetCanBeSkipped"
+        TransformationMethod="AndClaims"
+      >
+        <InputClaims>
+          <InputClaim
+            ClaimTypeReferenceId="isPasswordResetOnGreaterThanNow"
+            TransformationClaimType="inputClaim1"
+          />
+          <InputClaim
+            ClaimTypeReferenceId="isPasswordResetOnPresent"
+            TransformationClaimType="inputClaim2"
+          />
+        </InputClaims>
+        <OutputClaims>
+          <OutputClaim
+            ClaimTypeReferenceId="skipPasswordReset"
+            TransformationClaimType="outputClaim"
+          />
+        </OutputClaims>
+      </ClaimsTransformation>
+      <!-- ### Changes end: BI-341: Expire user password after X days ###-->
+
+      <!-- ### ARC 247: check if refresh token is still valid -->
+      <ClaimsTransformation
+        Id="AssertRefreshTokenIssuedLaterThanValidFromDate"
+        TransformationMethod="AssertDateTimeIsGreaterThan"
+      >
+        <InputClaims>
+          <InputClaim
+            ClaimTypeReferenceId="refreshTokenIssuedOnDateTime"
+            TransformationClaimType="leftOperand"
+          />
+          <InputClaim
+            ClaimTypeReferenceId="refreshTokensValidFromDateTime"
+            TransformationClaimType="rightOperand"
+          />
+        </InputClaims>
+        <InputParameters>
+          <InputParameter
+            Id="AssertIfEqualTo"
+            DataType="boolean"
+            Value="false"
+          />
+          <InputParameter
+            Id="AssertIfRightOperandIsNotPresent"
+            DataType="boolean"
+            Value="true"
+          />
+          <InputParameter
+            Id="TreatAsEqualIfWithinMillseconds"
+            DataType="int"
+            Value="10000"
+          />
+        </InputParameters>
+      </ClaimsTransformation>
+      <!--### Changes end: ARC 247: check if refresh token is still valid ###-->
+    </ClaimsTransformations>
+  </BuildingBlocks>
+
+  <ClaimsProviders>
+    <!-- ### BI-233 Just In Time Migration Policy ### -->
+    <ClaimsProvider>
+      <DisplayName>Just In Time Migration</DisplayName>
+      <TechnicalProfiles>
+        <!-- SIGN-IN -->
+        <TechnicalProfile Id="SelfAsserted-LocalAccountSignin-Email">
+          <OutputClaims>
+            <OutputClaim ClaimTypeReferenceId="needsMigration" />
+            <OutputClaim ClaimTypeReferenceId="requiresPasswordReset" />
+            <OutputClaim ClaimTypeReferenceId="email" />
+            <OutputClaim ClaimTypeReferenceId="requiresMFA" />
+          </OutputClaims>
+          <OutputClaimsTransformations>
+            <OutputClaimsTransformation ReferenceId="CopyEmailToReadOnly" />
+          </OutputClaimsTransformations>
+          <ValidationTechnicalProfiles>
+            <!--Check whether user should be migrated before login-NonInteractive -->
+            <ValidationTechnicalProfile
+              ReferenceId="REST-UserMigration-LocalAccount-SignIn"
+              ContinueOnError="false"
+            />
+
+            <!--
+              Validate credentials against Azure AD.
+              Skip this step if the user needs to migrate.
+            -->
+            <ValidationTechnicalProfile ReferenceId="login-NonInteractive">
+              <Preconditions>
+                <Precondition Type="ClaimEquals" ExecuteActionsIf="true">
+                  <Value>needsMigration</Value>
+                  <Value>true</Value>
+                  <Action>SkipThisValidationTechnicalProfile</Action>
+                </Precondition>
+              </Preconditions>
+            </ValidationTechnicalProfile>
+
+            <!--
+              Migrate credentials into Azure AD.
+              Skip this step if the user does not need to migrate.
+            -->
+            <ValidationTechnicalProfile
+              ReferenceId="AAD-MigrateUserUsingLogonEmail"
+            >
+              <Preconditions>
+                <Precondition Type="ClaimEquals" ExecuteActionsIf="true">
+                  <Value>needsMigration</Value>
+                  <Value>false</Value>
+                  <Action>SkipThisValidationTechnicalProfile</Action>
+                </Precondition>
+              </Preconditions>
+            </ValidationTechnicalProfile>
+
+            <!--
+              Patch objectId into services account.
+              Skip this step if the user did not need to migrate, and was not forced to reset their password.
+            -->
+            <ValidationTechnicalProfile
+              ReferenceId="REST-UserMigration-LocalAccount-LinkAccounts"
+            >
+              <Preconditions>
+                <!-- Run this if either of the preconditions is met -->
+                <Precondition Type="ClaimEquals" ExecuteActionsIf="false">
+                  <Value>needsMigration</Value>
+                  <Value>true</Value>
+                  <Action>SkipThisValidationTechnicalProfile</Action>
+                </Precondition>
+              </Preconditions>
+            </ValidationTechnicalProfile>
+          </ValidationTechnicalProfiles>
+        </TechnicalProfile>
+
+        <!-- SIGN-UP -->
+        <TechnicalProfile Id="LocalAccountSignUpWithLogonEmail">
+          <Metadata>
+            <!-- if true, user will need to verify email address on signup page-->
+            <Item Key="EnforceEmailVerification"
+              >AZURE_AD_REQUIRE_EMAIL_VERIFICATION</Item
+            >
+          </Metadata>
+          <OutputClaims>
+            <OutputClaim ClaimTypeReferenceId="requiresMFA" />
+          </OutputClaims>
+          <ValidationTechnicalProfiles>
+            <!-- If account already exists on services, do not permit signup -->
+            <ValidationTechnicalProfile
+              ReferenceId="REST-UserMigration-LocalAccount-PreventEmailConflict"
+              ContinueOnError="false"
+            />
+            <!-- Persist account to Azure AD -->
+            <ValidationTechnicalProfile
+              ReferenceId="AAD-UserWriteUsingLogonEmail"
+              ContinueOnError="false"
+            />
+            <!-- Persist object id to services -->
+            <ValidationTechnicalProfile
+              ReferenceId="REST-UserMigration-LocalAccount-CreateAccount"
+            />
+          </ValidationTechnicalProfiles>
+        </TechnicalProfile>
+
+        <!-- PASSWORD RESET first page -->
+        <TechnicalProfile Id="LocalAccountDiscoveryUsingEmailAddress">
+          <Metadata>
+            <Item Key="EnforceEmailVerification">False</Item>
+          </Metadata>
+          <ValidationTechnicalProfiles>
+            <ValidationTechnicalProfile
+              ReferenceId="AAD-UserReadUsingEmailAddress"
+              ContinueOnError="true"
+            />
+            <ValidationTechnicalProfile
+              ReferenceId="REST-UserMigration-LocalAccount-ThrowErrorIfAccountDoesNotExist"
+              ContinueOnError="false"
+            />
+          </ValidationTechnicalProfiles>
+        </TechnicalProfile>
+
+        <!-- PASSWORD RESET second page -->
+        <TechnicalProfile Id="LocalAccountWritePasswordUsingObjectId">
+          <OutputClaims>
+            <OutputClaim ClaimTypeReferenceId="objectId" />
+            <OutputClaim ClaimTypeReferenceId="authenticationSource" />
+          </OutputClaims>
+          <ValidationTechnicalProfiles>
+            <ValidationTechnicalProfile
+              ReferenceId="AAD-UserWritePasswordUsingObjectId"
+            >
+              <Preconditions>
+                <Precondition Type="ClaimsExist" ExecuteActionsIf="false">
+                  <Value>objectId</Value>
+                  <Action>SkipThisValidationTechnicalProfile</Action>
+                </Precondition>
+              </Preconditions>
+            </ValidationTechnicalProfile>
+
+            <ValidationTechnicalProfile
+              ReferenceId="AAD-MigrateUserUsingLogonEmail"
+            >
+              <!--
+                Create the account.
+                Skip if it already exist or isForgotPassword exists
+                -->
+              <Preconditions>
+                <Precondition Type="ClaimsExist" ExecuteActionsIf="true">
+                  <Value>objectId</Value>
+                  <Action>SkipThisValidationTechnicalProfile</Action>
+                </Precondition>
+                <Precondition Type="ClaimsExist" ExecuteActionsIf="true">
+                  <Value>isForgotPassword</Value>
+                  <Action>SkipThisValidationTechnicalProfile</Action>
+                </Precondition>
+              </Preconditions>
+            </ValidationTechnicalProfile>
+
+            <ValidationTechnicalProfile
+              ReferenceId="REST-UserMigration-LocalAccount-LinkAccounts"
+            >
+              <Preconditions>
+                <!--
+                  Skip this validation technical profile if objectId exists (existing account)
+                  or if requiresPasswordReset is true
+                  or if isForgotPassword exists
+                -->
+                <Precondition Type="ClaimsExist" ExecuteActionsIf="false">
+                  <Value>objectId</Value>
+                  <Action>SkipThisValidationTechnicalProfile</Action>
+                </Precondition>
+                <Precondition Type="ClaimEquals" ExecuteActionsIf="false">
+                  <Value>requiresPasswordReset</Value>
+                  <Value>true</Value>
+                  <Action>SkipThisValidationTechnicalProfile</Action>
+                </Precondition>
+                <Precondition Type="ClaimsExist" ExecuteActionsIf="true">
+                  <Value>isForgotPassword</Value>
+                  <Action>SkipThisValidationTechnicalProfile</Action>
+                </Precondition>
+              </Preconditions>
+            </ValidationTechnicalProfile>
+          </ValidationTechnicalProfiles>
+        </TechnicalProfile>
+      </TechnicalProfiles>
+    </ClaimsProvider>
+    <!-- ### Changes end: BI-233 Just In Time Migration Policy ###-->
+
+    <!-- ### BI-233 RESTful Technical Profiles ### -->
+    <ClaimsProvider>
+      <DisplayName>Azure AD service hooks</DisplayName>
+      <TechnicalProfiles>
+        <!-- Migrate password from API to Azure AD -->
+        <TechnicalProfile Id="REST-UserMigration-LocalAccount-SignIn">
+          <DisplayName>Migrate user sign-in flow</DisplayName>
+          <Protocol
+            Name="Proprietary"
+            Handler="Web.TPEngine.Providers.RestfulProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+          />
+          <Metadata>
+            <Item Key="ServiceUrl"
+              >https://your-services.com/azure/api/v1/accounts/validate</Item
+            >
+            <Item Key="AuthenticationType">ApiKeyHeader</Item>
+            <Item Key="SendClaimsIn">Body</Item>
+          </Metadata>
+          <CryptographicKeys>
+            <Key
+              Id="x-azure-api-key"
+              StorageReferenceId="B2C_1A_SignupApiKey"
+            />
+          </CryptographicKeys>
+          <InputClaims>
+            <InputClaim ClaimTypeReferenceId="signInName" />
+            <InputClaim ClaimTypeReferenceId="password" />
+          </InputClaims>
+          <OutputClaims>
+            <OutputClaim ClaimTypeReferenceId="needsMigration" />
+            <OutputClaim ClaimTypeReferenceId="requiresPasswordReset" />
+            <OutputClaim ClaimTypeReferenceId="email" />
+            <OutputClaim ClaimTypeReferenceId="newPassword" />
+            <OutputClaim ClaimTypeReferenceId="displayName" />
+            <OutputClaim ClaimTypeReferenceId="givenName" />
+            <OutputClaim ClaimTypeReferenceId="surName" />
+            <OutputClaim ClaimTypeReferenceId="requiresMFA" />
+          </OutputClaims>
+          <UseTechnicalProfileForSessionManagement ReferenceId="SM-Noop" />
+        </TechnicalProfile>
+
+        <!-- Checks whether user exists.  If yes, raises an error -->
+        <TechnicalProfile
+          Id="REST-UserMigration-LocalAccount-PreventEmailConflict"
+        >
+          <DisplayName>Migrate user sign-in flow</DisplayName>
+          <Protocol
+            Name="Proprietary"
+            Handler="Web.TPEngine.Providers.RestfulProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+          />
+          <Metadata>
+            <Item Key="ServiceUrl"
+              >https://your-services.com/azure/api/v1/accounts/doesNotExist</Item
+            >
+            <Item Key="AuthenticationType">ApiKeyHeader</Item>
+            <Item Key="SendClaimsIn">Body</Item>
+          </Metadata>
+          <CryptographicKeys>
+            <Key
+              Id="x-azure-api-key"
+              StorageReferenceId="B2C_1A_SignupApiKey"
+            />
+          </CryptographicKeys>
+          <InputClaims>
+            <InputClaim
+              ClaimTypeReferenceId="email"
+              PartnerClaimType="signInName"
+            />
+          </InputClaims>
+          <UseTechnicalProfileForSessionManagement ReferenceId="SM-Noop" />
+        </TechnicalProfile>
+
+        <!-- Propagate ObjectID into newly signed up account -->
+        <!-- TODO Find a way to delete the azure ad account if this call fails -->
+        <TechnicalProfile Id="REST-UserMigration-LocalAccount-CreateAccount">
+          <DisplayName>Create account</DisplayName>
+          <Protocol
+            Name="Proprietary"
+            Handler="Web.TPEngine.Providers.RestfulProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+          />
+          <Metadata>
+            <Item Key="ServiceUrl"
+              >https://your-services.com/users/api/v1/accounts</Item
+            >
+            <Item Key="SendClaimsIn">Body</Item>
+            <Item Key="AuthenticationType">ApiKeyHeader</Item>
+          </Metadata>
+          <CryptographicKeys>
+            <Key
+              Id="x-azure-api-key"
+              StorageReferenceId="B2C_1A_SignupApiKey"
+            />
+          </CryptographicKeys>
+          <InputClaims>
+            <!-- Claims sent to your REST API -->
+            <InputClaim ClaimTypeReferenceId="userPrincipalName" />
+            <InputClaim ClaimTypeReferenceId="upnUserName" />
+            <InputClaim ClaimTypeReferenceId="email" />
+            <InputClaim ClaimTypeReferenceId="objectId" />
+            <InputClaim ClaimTypeReferenceId="surname" />
+            <InputClaim ClaimTypeReferenceId="givenName" />
+            <InputClaim ClaimTypeReferenceId="displayName" />
+          </InputClaims>
+          <OutputClaims>
+            <!-- Claims parsed from your REST API -->
+            <OutputClaim ClaimTypeReferenceId="userId" />
+            <OutputClaim
+              ClaimTypeReferenceId="requiresMFA"
+              DefaultValue="false"
+            />
+          </OutputClaims>
+          <UseTechnicalProfileForSessionManagement ReferenceId="SM-Noop" />
+        </TechnicalProfile>
+
+        <!-- Check if account exists before allowing reset to take place -->
+        <TechnicalProfile
+          Id="REST-UserMigration-LocalAccount-ThrowErrorIfAccountDoesNotExist"
+        >
+          <DisplayName
+            >Check whether account exists before allowing password
+            reset</DisplayName
+          >
+          <Protocol
+            Name="Proprietary"
+            Handler="Web.TPEngine.Providers.RestfulProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+          />
+          <Metadata>
+            <Item Key="ServiceUrl"
+              >https://your-services.com/azure/api/v1/accounts/exists</Item
+            >
+            <Item Key="AuthenticationType">ApiKeyHeader</Item>
+            <Item Key="SendClaimsIn">Body</Item>
+          </Metadata>
+          <CryptographicKeys>
+            <Key
+              Id="x-azure-api-key"
+              StorageReferenceId="B2C_1A_SignupApiKey"
+            />
+          </CryptographicKeys>
+          <InputClaims>
+            <InputClaim
+              ClaimTypeReferenceId="email"
+              PartnerClaimType="signInName"
+            />
+            <InputClaim ClaimTypeReferenceId="objectId" />
+          </InputClaims>
+          <UseTechnicalProfileForSessionManagement ReferenceId="SM-Noop" />
+        </TechnicalProfile>
+
+        <!-- After user is migrated from API to Azure, persist object id to the account -->
+        <TechnicalProfile Id="REST-UserMigration-LocalAccount-LinkAccounts">
+          <DisplayName
+            >Link accounts - sets objectid and azure provider type on
+            account</DisplayName
+          >
+          <Protocol
+            Name="Proprietary"
+            Handler="Web.TPEngine.Providers.RestfulProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+          />
+          <Metadata>
+            <Item Key="ServiceUrl"
+              >https://your-services.com/azure/api/v1/accounts/link</Item
+            >
+            <Item Key="AuthenticationType">ApiKeyHeader</Item>
+            <Item Key="SendClaimsIn">Body</Item>
+          </Metadata>
+          <CryptographicKeys>
+            <Key
+              Id="x-azure-api-key"
+              StorageReferenceId="B2C_1A_SignupApiKey"
+            />
+          </CryptographicKeys>
+          <InputClaims>
+            <InputClaim ClaimTypeReferenceId="signInName" />
+            <InputClaim ClaimTypeReferenceId="objectId" />
+          </InputClaims>
+          <OutputClaims>
+            <OutputClaim ClaimTypeReferenceId="email" />
+            <OutputClaim ClaimTypeReferenceId="displayName" />
+            <OutputClaim ClaimTypeReferenceId="givenName" />
+            <OutputClaim ClaimTypeReferenceId="surName" />
+          </OutputClaims>
+          <UseTechnicalProfileForSessionManagement ReferenceId="SM-Noop" />
+        </TechnicalProfile>
+      </TechnicalProfiles>
+    </ClaimsProvider>
+    <!-- ### Changes end: BI-233 RESTful Technical Profiles ### -->
+
+    <!-- ### Base Providers ### -->
+    <ClaimsProvider>
+      <DisplayName>Local Account SignIn</DisplayName>
+      <TechnicalProfiles>
+        <TechnicalProfile Id="login-NonInteractive">
+          <Metadata>
+            <Item Key="client_id">ProxyIdentityExperienceFrameworkAppId</Item>
+            <Item Key="IdTokenAudience">IdentityExperienceFrameworkAppId</Item>
+          </Metadata>
+          <InputClaims>
+            <InputClaim
+              ClaimTypeReferenceId="client_id"
+              DefaultValue="ProxyIdentityExperienceFrameworkAppId"
+            />
+            <InputClaim
+              ClaimTypeReferenceId="resource_id"
+              PartnerClaimType="resource"
+              DefaultValue="IdentityExperienceFrameworkAppId"
+            />
+          </InputClaims>
+        </TechnicalProfile>
+      </TechnicalProfiles>
+    </ClaimsProvider>
+    <!-- ### End Base Providers ### -->
+
+    <!-- ### Require new password on first login after user is migrated ### -->
+    <ClaimsProvider>
+      <DisplayName
+        >AAD B2C Require new password on first login for migrated
+        user</DisplayName
+      >
+      <TechnicalProfiles>
+        <TechnicalProfile Id="AAD-MigrateUserUsingLogonEmail">
+          <Metadata>
+            <Item Key="Operation">Write</Item>
+            <Item Key="RaiseErrorIfClaimsPrincipalAlreadyExists">true</Item>
+          </Metadata>
+          <IncludeInSso>false</IncludeInSso>
+          <InputClaimsTransformations>
+            <!-- ### ARC-424: Set password reset on date for migrated user -->
+            <InputClaimsTransformation ReferenceId="SetPasswordResetOn" />
+            <!-- ### Changes End: ARC-424: Set password reset on date for migrated user -->
+          </InputClaimsTransformations>
+          <InputClaims>
+            <InputClaim
+              ClaimTypeReferenceId="email"
+              PartnerClaimType="signInNames.emailAddress"
+              Required="true"
+            />
+          </InputClaims>
+          <PersistedClaims>
+            <!-- Required claims -->
+            <PersistedClaim
+              ClaimTypeReferenceId="email"
+              PartnerClaimType="signInNames.emailAddress"
+            />
+            <PersistedClaim
+              ClaimTypeReferenceId="newPassword"
+              PartnerClaimType="password"
+            />
+            <PersistedClaim
+              ClaimTypeReferenceId="displayName"
+              DefaultValue="unknown"
+            />
+            <PersistedClaim
+              ClaimTypeReferenceId="passwordPolicies"
+              DefaultValue="DisablePasswordExpiration,DisableStrongPassword"
+              AlwaysUseDefaultValue="true"
+            />
+
+            <!-- ### ARC-424: Set password reset on date for migrated user -->
+            <PersistedClaim ClaimTypeReferenceId="extension_passwordResetOn" />
+            <!-- ### Changes End: ARC-424: Set password reset on date for migrated user -->
+
+            <!-- Optional claims. -->
+            <PersistedClaim ClaimTypeReferenceId="givenName" />
+            <PersistedClaim ClaimTypeReferenceId="surname" />
+          </PersistedClaims>
+          <OutputClaims>
+            <OutputClaim ClaimTypeReferenceId="objectId" />
+            <OutputClaim
+              ClaimTypeReferenceId="newUser"
+              PartnerClaimType="newClaimsPrincipalCreated"
+            />
+            <OutputClaim
+              ClaimTypeReferenceId="authenticationSource"
+              DefaultValue="localAccountAuthentication"
+            />
+            <OutputClaim ClaimTypeReferenceId="userPrincipalName" />
+            <OutputClaim ClaimTypeReferenceId="signInNames.emailAddress" />
+          </OutputClaims>
+          <IncludeTechnicalProfile ReferenceId="AAD-Common" />
+          <UseTechnicalProfileForSessionManagement ReferenceId="SM-AAD" />
+        </TechnicalProfile>
+      </TechnicalProfiles>
+    </ClaimsProvider>
+    <!-- ### Changes end: Require new password on first login after user is migrated ### -->
+
+    <!-- ### BI-341 Expire passwords after X days ### -->
+    <ClaimsProvider>
+      <DisplayName>AAD B2C Forced Password Reset After X Days</DisplayName>
+      <TechnicalProfiles>
+        <TechnicalProfile Id="AAD-UserReadUsingObjectId">
+          <OutputClaims>
+            <!-- Read the 'password reset on' extension attribute -->
+            <OutputClaim ClaimTypeReferenceId="extension_passwordResetOn" />
+          </OutputClaims>
+          <OutputClaimsTransformations>
+            <OutputClaimsTransformation ReferenceId="SetCurrentDateTime" />
+            <OutputClaimsTransformation
+              ReferenceId="ComparePasswordResetOnWithCurrentDateTime"
+            />
+            <OutputClaimsTransformation
+              ReferenceId="CheckIfPasswordResetOnPresent"
+            />
+            <OutputClaimsTransformation
+              ReferenceId="CheckWhetherPasswordResetCanBeSkipped"
+            />
+          </OutputClaimsTransformations>
+        </TechnicalProfile>
+        <TechnicalProfile Id="AAD-UserWriteUsingLogonEmail">
+          <InputClaimsTransformations>
+            <!-- Get current date and time -->
+            <InputClaimsTransformation ReferenceId="SetPasswordResetOn" />
+          </InputClaimsTransformations>
+          <PersistedClaims>
+            <!-- On sign-up, set the 'password reset on' extension attribute with the current date and time -->
+            <PersistedClaim ClaimTypeReferenceId="extension_passwordResetOn" />
+          </PersistedClaims>
+        </TechnicalProfile>
+        <TechnicalProfile Id="AAD-UserWritePasswordUsingObjectId">
+          <InputClaimsTransformations>
+            <!-- Get current date and time -->
+            <InputClaimsTransformation ReferenceId="SetPasswordResetOn" />
+          </InputClaimsTransformations>
+          <PersistedClaims>
+            <!-- On sign-up, set the 'password reset on' extension attribute with the current date and time -->
+            <PersistedClaim ClaimTypeReferenceId="extension_passwordResetOn" />
+          </PersistedClaims>
+        </TechnicalProfile>
+      </TechnicalProfiles>
+    </ClaimsProvider>
+    <!-- ### Changes end: BI-341 Expire passwords after X days ### -->
+
+    <!-- ### ARC-247 check if refresh token is valid ### -->
+    <ClaimsProvider>
+      <DisplayName>Session Management</DisplayName>
+      <TechnicalProfiles>
+        <TechnicalProfile Id="SM-RefreshTokenReadAndSetup">
+          <DisplayName
+            >Trustframework Policy Engine Refresh Token Setup Technical
+            Profile</DisplayName
+          >
+          <Protocol Name="None" />
+          <OutputClaims>
+            <OutputClaim ClaimTypeReferenceId="objectId" />
+            <OutputClaim ClaimTypeReferenceId="refreshTokenIssuedOnDateTime" />
+          </OutputClaims>
+        </TechnicalProfile>
+
+        <TechnicalProfile Id="AAD-UserReadUsingObjectId-CheckRefreshTokenDate">
+          <OutputClaims>
+            <OutputClaim
+              ClaimTypeReferenceId="refreshTokensValidFromDateTime"
+            />
+          </OutputClaims>
+          <OutputClaimsTransformations>
+            <OutputClaimsTransformation
+              ReferenceId="AssertRefreshTokenIssuedLaterThanValidFromDate"
+            />
+          </OutputClaimsTransformations>
+          <IncludeTechnicalProfile ReferenceId="AAD-UserReadUsingObjectId" />
+        </TechnicalProfile>
+      </TechnicalProfiles>
+    </ClaimsProvider>
+    <!-- ### Changes end: ARC-247 check if refresh token is valid ### -->
+
+    <!-- ### ARC-215 password update flow -->
+    <ClaimsProvider>
+      <DisplayName>Local Account SignIn</DisplayName>
+      <TechnicalProfiles>
+        <TechnicalProfile Id="login-NonInteractive-PasswordChange">
+          <DisplayName>Local Account SignIn</DisplayName>
+          <InputClaims>
+            <InputClaim
+              ClaimTypeReferenceId="oldPassword"
+              PartnerClaimType="password"
+              Required="true"
+            />
+          </InputClaims>
+          <IncludeTechnicalProfile ReferenceId="login-NonInteractive" />
+        </TechnicalProfile>
+      </TechnicalProfiles>
+    </ClaimsProvider>
+
+    <ClaimsProvider>
+      <DisplayName>Local Account Password Change</DisplayName>
+      <TechnicalProfiles>
+        <TechnicalProfile Id="LocalAccountWritePasswordChangeUsingObjectId">
+          <DisplayName>Change password (username)</DisplayName>
+          <Protocol
+            Name="Proprietary"
+            Handler="Web.TPEngine.Providers.SelfAssertedAttributeProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+          />
+          <Metadata>
+            <Item Key="ContentDefinitionReferenceId">api.selfasserted</Item>
+          </Metadata>
+          <InputClaims>
+            <InputClaim ClaimTypeReferenceId="objectId" />
+          </InputClaims>
+          <OutputClaims>
+            <OutputClaim ClaimTypeReferenceId="oldPassword" Required="true" />
+            <OutputClaim ClaimTypeReferenceId="newPassword" Required="true" />
+            <OutputClaim
+              ClaimTypeReferenceId="reenterPassword"
+              Required="true"
+            />
+          </OutputClaims>
+          <ValidationTechnicalProfiles>
+            <ValidationTechnicalProfile
+              ReferenceId="login-NonInteractive-PasswordChange"
+            />
+            <ValidationTechnicalProfile
+              ReferenceId="AAD-UserWritePasswordUsingObjectId"
+            />
+          </ValidationTechnicalProfiles>
+        </TechnicalProfile>
+      </TechnicalProfiles>
+    </ClaimsProvider>
+    <!-- ### Changes end: ARC-215 password update flow -->
+  </ClaimsProviders>
+</TrustFrameworkPolicy>

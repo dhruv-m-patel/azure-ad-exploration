@@ -1,0 +1,440 @@
+<TrustFrameworkPolicy
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://schemas.microsoft.com/online/cpim/schemas/2013/06"
+  PolicySchemaVersion="0.3.0.0"
+  TenantId="yourtenant.onmicrosoft.com"
+  PolicyId="B2C_1A_ENV_TrustFrameworkJourneys"
+  PublicPolicyUri="http://yourtenant.onmicrosoft.com/B2C_1A_ENV_TrustFrameworkJourneys"
+>
+  <BasePolicy>
+    <TenantId>yourtenant.onmicrosoft.com</TenantId>
+    <PolicyId>B2C_1A_ENV_TrustFrameworkExtensions</PolicyId>
+  </BasePolicy>
+
+  <ClaimsProviders>
+    <ClaimsProvider>
+      <DisplayName>Local Account SignIn</DisplayName>
+      <TechnicalProfiles>
+        <TechnicalProfile Id="ForgotPassword">
+          <DisplayName>Forgot your password?</DisplayName>
+          <Protocol
+            Name="Proprietary"
+            Handler="Web.TPEngine.Providers.ClaimsTransformationProtocolProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"
+          />
+          <OutputClaims>
+            <OutputClaim
+              ClaimTypeReferenceId="isForgotPassword"
+              DefaultValue="true"
+              AlwaysUseDefaultValue="true"
+            />
+          </OutputClaims>
+          <UseTechnicalProfileForSessionManagement ReferenceId="SM-Noop" />
+        </TechnicalProfile>
+      </TechnicalProfiles>
+    </ClaimsProvider>
+  </ClaimsProviders>
+
+  <UserJourneys>
+    <UserJourney Id="SignUpOrSignIn">
+      <OrchestrationSteps>
+        <!-- Sign in with email-->
+        <OrchestrationStep
+          Order="1"
+          Type="CombinedSignInAndSignUp"
+          ContentDefinitionReferenceId="api.signuporsignin"
+        >
+          <ClaimsProviderSelections>
+            <ClaimsProviderSelection
+              ValidationClaimsExchangeId="LocalAccountSigninEmailExchange"
+            />
+            <ClaimsProviderSelection
+              TargetClaimsExchangeId="ForgotPasswordExchange"
+            />
+          </ClaimsProviderSelections>
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="LocalAccountSigninEmailExchange"
+              TechnicalProfileReferenceId="SelfAsserted-LocalAccountSignin-Email"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+
+        <!-- Sign up with email. Skip if objectId exists-->
+        <OrchestrationStep Order="2" Type="ClaimsExchange">
+          <Preconditions>
+            <Precondition Type="ClaimsExist" ExecuteActionsIf="true">
+              <Value>objectId</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+          </Preconditions>
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="SignUpWithLogonEmailExchange"
+              TechnicalProfileReferenceId="LocalAccountSignUpWithLogonEmail"
+            />
+            <ClaimsExchange
+              Id="ForgotPasswordExchange"
+              TechnicalProfileReferenceId="ForgotPassword"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+
+        <!--
+        This step invokes PasswordReset subjourney when user selects "forgot password" on sign in page.
+      -->
+        <OrchestrationStep Order="3" Type="InvokeSubJourney">
+          <Preconditions>
+            <!-- Skip if isForgotPassword claim doesn't exist -->
+            <Precondition Type="ClaimsExist" ExecuteActionsIf="false">
+              <Value>isForgotPassword</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+          </Preconditions>
+          <JourneyList>
+            <Candidate SubJourneyReferenceId="PasswordReset" />
+          </JourneyList>
+        </OrchestrationStep>
+
+        <!--
+        This step invokes MFA subjourney if the user's account requires it.
+        Skip if requiresMFA claim does not exist or is false.
+      -->
+        <OrchestrationStep Order="4" Type="InvokeSubJourney">
+          <Preconditions>
+            <Precondition Type="ClaimsExist" ExecuteActionsIf="false">
+              <Value>requiresMFA</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+            <Precondition Type="ClaimEquals" ExecuteActionsIf="true">
+              <Value>requiresMFA</Value>
+              <Value>false</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+          </Preconditions>
+          <JourneyList>
+            <Candidate SubJourneyReferenceId="MFA" />
+          </JourneyList>
+        </OrchestrationStep>
+
+        <!--
+        This step reads any user attributes that we may not have received when in the token.
+        At this point, we know we've signed in with a user.
+       -->
+        <OrchestrationStep Order="5" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="AADUserReadWithObjectId"
+              TechnicalProfileReferenceId="AAD-UserReadUsingObjectId"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+
+        <!-- ### BI-341: Expire passwords after X days ### -->
+        <OrchestrationStep Order="6" Type="InvokeSubJourney">
+          <Preconditions>
+            <Precondition Type="ClaimEquals" ExecuteActionsIf="true">
+              <Value>skipPasswordReset</Value>
+              <Value>True</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+          </Preconditions>
+          <JourneyList>
+            <Candidate SubJourneyReferenceId="NewPassword" />
+          </JourneyList>
+        </OrchestrationStep>
+        <!-- ### Changes end: BI-231: Expire passwords after X days ### -->
+
+        <!--
+        This step force updates password if user's account requires it.
+        Skip if requiresPasswordReset doesn't exist or is false
+      -->
+        <OrchestrationStep Order="7" Type="ClaimsExchange">
+          <Preconditions>
+            <!-- ### BI-312: Reset password after first login if it was system generated ### -->
+            <Precondition Type="ClaimsExist" ExecuteActionsIf="false">
+              <Value>requiresPasswordReset</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+            <Precondition Type="ClaimEquals" ExecuteActionsIf="false">
+              <Value>requiresPasswordReset</Value>
+              <Value>true</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+            <!-- ### Changes end: BI-312: Reset password after first login if it was system generated ### -->
+          </Preconditions>
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="NewCredentials"
+              TechnicalProfileReferenceId="LocalAccountWritePasswordUsingObjectId"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+
+        <!-- Issue token as the last step-->
+        <OrchestrationStep
+          Order="8"
+          Type="SendClaims"
+          CpimIssuerTechnicalProfileReferenceId="JwtIssuer"
+        />
+      </OrchestrationSteps>
+      <ClientDefinition ReferenceId="DefaultWeb" />
+    </UserJourney>
+
+    <UserJourney Id="ProfileEdit">
+      <OrchestrationSteps>
+        <OrchestrationStep
+          Order="1"
+          Type="ClaimsProviderSelection"
+          ContentDefinitionReferenceId="api.idpselections"
+        >
+          <ClaimsProviderSelections>
+            <ClaimsProviderSelection
+              TargetClaimsExchangeId="LocalAccountSigninEmailExchange"
+            />
+          </ClaimsProviderSelections>
+        </OrchestrationStep>
+        <OrchestrationStep Order="2" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="LocalAccountSigninEmailExchange"
+              TechnicalProfileReferenceId="SelfAsserted-LocalAccountSignin-Email"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+        <OrchestrationStep Order="3" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="AADUserReadWithObjectId"
+              TechnicalProfileReferenceId="AAD-UserReadUsingObjectId"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+
+        <OrchestrationStep Order="4" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="B2CUserProfileUpdateExchange"
+              TechnicalProfileReferenceId="SelfAsserted-ProfileUpdate"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+        <OrchestrationStep
+          Order="5"
+          Type="SendClaims"
+          CpimIssuerTechnicalProfileReferenceId="JwtIssuer"
+        />
+      </OrchestrationSteps>
+      <ClientDefinition ReferenceId="DefaultWeb" />
+    </UserJourney>
+
+    <UserJourney Id="PasswordReset">
+      <OrchestrationSteps>
+        <OrchestrationStep Order="1" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="PasswordResetUsingEmailAddressExchange"
+              TechnicalProfileReferenceId="LocalAccountDiscoveryUsingEmailAddress"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+        <OrchestrationStep Order="2" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="NewCredentials"
+              TechnicalProfileReferenceId="LocalAccountWritePasswordUsingObjectId"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+        <OrchestrationStep
+          Order="3"
+          Type="SendClaims"
+          CpimIssuerTechnicalProfileReferenceId="JwtIssuer"
+        />
+      </OrchestrationSteps>
+      <ClientDefinition ReferenceId="DefaultWeb" />
+    </UserJourney>
+
+    <UserJourney Id="PasswordUpdate">
+      <OrchestrationSteps>
+        <OrchestrationStep
+          Order="1"
+          Type="ClaimsProviderSelection"
+          ContentDefinitionReferenceId="api.signuporsignin"
+        >
+          <ClaimsProviderSelections>
+            <ClaimsProviderSelection
+              TargetClaimsExchangeId="LocalAccountSigninEmailExchange"
+            />
+          </ClaimsProviderSelections>
+        </OrchestrationStep>
+        <OrchestrationStep Order="2" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="LocalAccountSigninEmailExchange"
+              TechnicalProfileReferenceId="SelfAsserted-LocalAccountSignin-Email"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+        <OrchestrationStep Order="3" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="NewCredentials"
+              TechnicalProfileReferenceId="LocalAccountWritePasswordChangeUsingObjectId"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+        <OrchestrationStep Order="4" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="AADUserReadWithObjectId"
+              TechnicalProfileReferenceId="AAD-UserReadUsingObjectId"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+        <OrchestrationStep
+          Order="5"
+          Type="SendClaims"
+          CpimIssuerTechnicalProfileReferenceId="JwtIssuer"
+        />
+      </OrchestrationSteps>
+      <ClientDefinition ReferenceId="DefaultWeb" />
+    </UserJourney>
+    <!-- ### ARC-247 check if refresh token is valid ### -->
+    <UserJourney Id="RedeemRefreshToken">
+      <PreserveOriginalAssertion>false</PreserveOriginalAssertion>
+      <OrchestrationSteps>
+        <OrchestrationStep Order="1" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="RefreshTokenSetupExchange"
+              TechnicalProfileReferenceId="SM-RefreshTokenReadAndSetup"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+        <OrchestrationStep Order="2" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="CheckRefreshTokenDateFromAadExchange"
+              TechnicalProfileReferenceId="AAD-UserReadUsingObjectId-CheckRefreshTokenDate"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+        <OrchestrationStep
+          Order="3"
+          Type="SendClaims"
+          CpimIssuerTechnicalProfileReferenceId="JwtIssuer"
+        />
+      </OrchestrationSteps>
+    </UserJourney>
+    <!-- ### Changes end: ARC-247 check if refresh token is valid ### -->
+  </UserJourneys>
+
+  <SubJourneys>
+    <!-- This subjourney is invoked for "forgot password" user journey-->
+    <SubJourney Id="PasswordReset" Type="Call">
+      <OrchestrationSteps>
+        <!-- This step retrieves user account from services endpoint-->
+        <OrchestrationStep Order="1" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="PasswordResetUsingEmailAddressExchange"
+              TechnicalProfileReferenceId="LocalAccountDiscoveryUsingEmailAddress"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+
+        <!-- This step verifies self-asserted emails. Similar to MFA subjourney-->
+        <OrchestrationStep Order="2" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="Email-Verify"
+              TechnicalProfileReferenceId="EmailVerifyOnSignIn"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+
+        <!-- This step saves new password to AAD-->
+        <OrchestrationStep Order="3" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="NewCredentials"
+              TechnicalProfileReferenceId="LocalAccountWritePasswordUsingObjectId"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+      </OrchestrationSteps>
+    </SubJourney>
+
+    <SubJourney Id="MFA" Type="Call">
+      <OrchestrationSteps>
+        <!-- This step prompts the user to choose MFA method -->
+        <OrchestrationStep Order="1" Type="ClaimsExchange">
+          <Preconditions>
+            <Precondition Type="ClaimsExist" ExecuteActionsIf="true">
+              <Value>extension_mfaByPhoneOrEmail</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+          </Preconditions>
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="SelfAsserted-Select-MFA-Method"
+              TechnicalProfileReferenceId="SelfAsserted-Select-MFA-Method"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+
+        <!-- This step initiates sms MFA. Skip if the preferred MFA method is not 'phone' -->
+        <OrchestrationStep Order="2" Type="ClaimsExchange">
+          <Preconditions>
+            <Precondition Type="ClaimsExist" ExecuteActionsIf="true">
+              <Value>isActiveMFASession</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+            <Precondition Type="ClaimEquals" ExecuteActionsIf="false">
+              <Value>extension_mfaByPhoneOrEmail</Value>
+              <Value>phone</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+          </Preconditions>
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="PhoneFactor-Verify"
+              TechnicalProfileReferenceId="PhoneFactor-InputOrVerify"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+
+        <!-- This step initiates email MFA. Skip if mfa by email is false -->
+        <OrchestrationStep Order="3" Type="ClaimsExchange">
+          <Preconditions>
+            <Precondition Type="ClaimEquals" ExecuteActionsIf="false">
+              <Value>extension_mfaByPhoneOrEmail</Value>
+              <Value>email</Value>
+              <Action>SkipThisOrchestrationStep</Action>
+            </Precondition>
+          </Preconditions>
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="Email-Verify"
+              TechnicalProfileReferenceId="EmailVerifyOnSignIn"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+      </OrchestrationSteps>
+    </SubJourney>
+
+    <SubJourney Id="NewPassword" Type="Call">
+      <OrchestrationSteps>
+        <OrchestrationStep Order="1" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange
+              Id="NewCredentials"
+              TechnicalProfileReferenceId="LocalAccountWritePasswordUsingObjectId"
+            />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+      </OrchestrationSteps>
+    </SubJourney>
+  </SubJourneys>
+</TrustFrameworkPolicy>
