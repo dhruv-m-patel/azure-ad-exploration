@@ -26,7 +26,7 @@ export default async function handler(
       now
     );
     const tokensFromRestCall = await getTokensFromAuthorizationCode(code);
-    res.send({
+    res.json({
       ...tokensFromMsalNodeClient,
       ...tokensFromRestCall,
     });
