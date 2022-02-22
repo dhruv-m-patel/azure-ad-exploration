@@ -13,6 +13,12 @@ export type ExtendedAuthenticationResult = AuthenticationResult & {
   refreshToken?: string;
 };
 
+export type AuthenticationAppState =
+  | 'login'
+  | 'logout'
+  | 'password_reset'
+  | 'update_profile';
+
 export function getScopes() {
   return [process.env.AZURE_AD_CLIENT_ID as string, 'openid', 'offline_access'];
 }
@@ -136,4 +142,19 @@ export async function refreshTokens(refreshToken: string) {
     authenticationResult as ExtendedAuthenticationResult,
     now
   );
+}
+
+export async function getAuthCodeUrl({
+  redirectUri,
+  prompt = 'login',
+}: {
+  redirectUri: string;
+  prompt?: AuthenticationAppState;
+}): Promise<string> {
+  const client = getMsalNodeClient();
+  return client.getAuthCodeUrl({
+    scopes: getScopes(),
+    redirectUri,
+    prompt,
+  });
 }
